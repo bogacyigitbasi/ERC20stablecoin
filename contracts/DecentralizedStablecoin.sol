@@ -2,8 +2,12 @@
 
 pragma solidity ^0.8.20;
 // import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {ERC20, ERC20Burnable} from "../node_modules/@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
-import {Ownable} from "../node_modules/@openzeppelin/contracts/access/Ownable.sol";
+// import {ERC20, ERC20Burnable} from "../node_modules/@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+// import {Ownable} from "../node_modules/@openzeppelin/contracts/access/Ownable.sol";
+
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 /**
     @title DecentralizeStablecoin
     @author by
@@ -20,7 +24,11 @@ contract DecentralizedStablecoin is ERC20Burnable, Ownable {
     error DSC_MustBeGreaterThanZero();
     error DSC_MintTryForZeroAddress();
     // ERC20Burnable is ERC20 which means we have to use ERC20 constructor as well.
-    constructor() ERC20("Decentralized Stablecoin", "DSC") {}
+    constructor(
+        string memory name,
+        string memory symbol,
+        address initialOwner
+    ) ERC20(name, symbol) Ownable(initialOwner) {}
 
     function burn(uint256 _amount) public override onlyOwner {
         if (_amount <= 0) {
