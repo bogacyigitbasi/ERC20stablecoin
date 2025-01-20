@@ -29,6 +29,7 @@ contract DSEngine is ReentrancyGuard {
     error DSCEngine__TokenIsNotAllowed2();
     error DSCEngine__TokenPriceFeedAndTokenAddressesMustBeSameLength();
     error DSEngine__DepositFailed();
+    error DSCEngine_BreaksHealthFactor();
 
     /////////
     /// modifiers
@@ -63,7 +64,8 @@ contract DSEngine is ReentrancyGuard {
     /////////
     uint256 private constant ADDITIONAL_FEED_PRECISION= 1e10;
     uint256 private constant PRECISION= 1e10;
-
+    uint256 private constant LIQUIDATION_THRESHOLD = 50; // 200% overcollateralized
+    uint256 private constant MIN_HEALTH_FACTOR = 1;
     /// tokens alloed
     mapping(address => bool) private s_tokenAllowed;
 
@@ -188,14 +190,13 @@ contract DSEngine is ReentrancyGuard {
     ////// @title Private internal view functions
     /**
      * @notice get all values for the user to compute health factor
-     * @param user
-     * @return totalDSCMinted
-     * @return totalValueInUSD
+     * @param user user
+     * @return totalDSCMinted amount of DSC already minted
+     * @return totalValueInUSD collateral value that person has in USD
      */
     function _getAccountInformation(address user) internal view returns(uint256 totalDSCMinted,uint256 totalValueInUSD){
         totalDSCMinted= s_userDSCMintAmount[user];
         totalValueInUSD = getAccountCollateralValue(user);
-
     }
 
     /**
@@ -208,6 +209,13 @@ contract DSEngine is ReentrancyGuard {
 
         // get values above
         (uint256 totalDSCMinted, uint256 collateralValueInUSD) = _getAccountInformation(user);
+        // we always want to be overcollateralized
+        // we cant get under or equally collateralized like 100-100
+        // so we have a threshold
+
+        uint256 collateralAdjusted = (collateralValueInUSD*LIQUIDATION_THRESHOLD)/ 100;
+        // return (collateralValueInUSD/totalDSCMinted);
+        return collateralAdjusted*100/totalDSCMinted;
     }
     /**
      * @notice The health factor is a critical metric within the Aave Protocol
@@ -221,7 +229,10 @@ contract DSEngine is ReentrancyGuard {
     function revertIfHealthFactorIsBroken(address user) internal view {
         // check health factor if they have enough collateral
         // revert if they dont
-
+        uint256 healthFactor = _healthFactor(user);
+        if (healthFactor < MIN_HEALTH_FACTOR){
+            revert DSCEngine_BreaksHealthFactor();
+        }
     }
 
     /// Public & External view functions
