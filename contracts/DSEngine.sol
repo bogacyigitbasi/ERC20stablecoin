@@ -30,6 +30,7 @@ contract DSEngine is ReentrancyGuard {
     error DSCEngine__TokenPriceFeedAndTokenAddressesMustBeSameLength();
     error DSEngine__DepositFailed();
     error DSCEngine_BreaksHealthFactor();
+    error DSC_EngineMintFailed();
 
     /////////
     /// modifiers
@@ -158,7 +159,14 @@ contract DSEngine is ReentrancyGuard {
         // we need to keep track of who minted how much
         s_userDSCMintAmount[msg.sender] += amountDSCToMint;
         // if they minted too much ($150  and 100 ETH)???
-        revertIfHealthFactorIsBroken(msg.sender);
+        _revertIfHealthFactorIsBroken(msg.sender);
+
+        bool minted = dsc.mint(msg.sender, amountDSCToMint);
+
+        if(!minted){
+            revert DSC_EngineMintFailed();
+        }
+
     }
 
     function burnDSC() external {}
@@ -226,7 +234,7 @@ contract DSEngine is ReentrancyGuard {
      * @param user if user has enough collateral above threshold.
      */
     ///// @title A title that should describe the contract/interface
-    function revertIfHealthFactorIsBroken(address user) internal view {
+    function _revertIfHealthFactorIsBroken(address user) internal view {
         // check health factor if they have enough collateral
         // revert if they dont
         uint256 healthFactor = _healthFactor(user);
