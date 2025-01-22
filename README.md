@@ -7,6 +7,12 @@
    - wETH
    - wBTC
 
+# Implementation steps
+
+- There are 2 main contracts of the project, this is just an ERC20
+  governed by DSEngine (DecentralizedStablecoinEngine) contract.
+- It is using openzeppelin-contracts.
+
 # Sample Hardhat Project
 
 This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a Hardhat Ignition module that deploys that contract.

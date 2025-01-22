@@ -16,7 +16,9 @@ module.exports = {
     ["openzeppelin/", "@openzeppelin/contracts/"],
   ],
   networks: {
-    hardhat: {}, // Default Hardhat network
+    localhost:{
+      url: "http://127.0.0.1:8545",
+    },
     // Example: Add a testnet or mainnet configuration if needed
     sepolia: {
       url: process.env.SEPOLIA_RPC_URL || "", // Your Sepolia RPC URL
