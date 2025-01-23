@@ -84,7 +84,7 @@ contract DSEngine is ReentrancyGuard {
     // who minted how much of DSC using the collateral
     mapping(address user => uint256 amount) private s_userDSCMintAmount;
 
-        /////////
+    /////////
     /// Events
     /////////
     event CollateralDeposited(address indexed user, address indexed token, uint256 indexed amount);
@@ -191,7 +191,9 @@ contract DSEngine is ReentrancyGuard {
     // Person 2 - sees an opportunity, undercollateralized!!
     // I'll pay back the $50 DSC -> get all your collateral
     // he gets $74 wort of ETH in return of $50 DSC
-    function getHealthFactor() external view {}
+    function getHealthFactor(address user) external view returns (uint256) {
+        return _healthFactor(user);
+    }
 
 
     // PRIVATE internal view functions
