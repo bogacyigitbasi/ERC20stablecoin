@@ -46,12 +46,6 @@ describe ("Test DSC and Engine", function(){
         let transaction = await dsc.connect(account1).transferOwnership(dscEngine.getAddress());
         await transaction.wait();
 
-        transaction = await mockerc20.connect(account1).approve(await dscEngine.getAddress(), BigInt(100000000));
-        await transaction.wait();
-
-        transaction = await dscEngine.connect(account1).depositCollateral(mockAddress, BigInt(10000000),{gasLimit:300000})
-        await transaction.wait();
-
     })
 
     it ("check contract owner for dsc", async () => {
@@ -60,5 +54,16 @@ describe ("Test DSC and Engine", function(){
 
     it ("check the mockv3Aggregator price feed", async() =>{
         console.log(await dscEngine.getValueOfCollateralInUSD(mockAddress,BigInt(100000000)))
+    })
+
+    it("test if collateral is zero", async () => {
+        let transaction = await mockerc20.connect(account1).approve(await dscEngine.getAddress(), BigInt(100000000));
+        await transaction.wait();
+
+        // transaction = await dscEngine.connect(account1).depositCollateral(mockAddress,100000000,{gasLimit:300000})
+        // await transaction.wait();
+        transaction = await dscEngine.connect(account1).depositCollateral(mockAddress,0,{gasLimit:300000})
+        await transaction.wait();
+
     })
 })
