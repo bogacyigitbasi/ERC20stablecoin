@@ -33,6 +33,7 @@ contract DSEngine is ReentrancyGuard {
     error DSC_EngineMintFailed();
     error DSCEngine_Transferfailed();
     error DSEngine_TransferFailed();
+    error DSCEngine_HealthFactorOK();
     /////////
     /// modifiers
     /////////
@@ -65,9 +66,10 @@ contract DSEngine is ReentrancyGuard {
     /// State Variables
     /////////
     uint256 private constant ADDITIONAL_FEED_PRECISION= 1e10;
-    uint256 private constant PRECISION= 1e10;
     uint256 private constant LIQUIDATION_THRESHOLD = 50; // 200% overcollateralized
-    uint256 private constant MIN_HEALTH_FACTOR = 1;
+    uint256 private constant LIQUIDATION_PRECISION= 100;
+    uint256 private constant MIN_HEALTH_FACTOR = 1e18;
+    uint256 private constant LIQUIDATION_BONUS = 10; // 10$ bonus
     /// tokens alloed
     mapping(address => bool) private s_tokenAllowed;
 
@@ -226,9 +228,46 @@ contract DSEngine is ReentrancyGuard {
     // then you dont want to end up in that position
     // you liquidate people to not lose, you kick out them from the system.
     // to save the protocol
-    function liquidate() external {}
 
-    // in the previous case, what if the eth price dumped into 40
+    // if health factor becomes dangerous we need someone to call burn and redeem
+    // we call the liquitate if the price of the collateral tanks
+    // if someone is almost undercollateralized we will pay you to liquidate them
+    // this is a gamified approach, we incentivize people to liquidate people
+    // in these positions
+
+    // if someone is almost undercollateralized we will pay the liquidator to liquidate them
+    // $75 backing $50 DSC -> certainly lower than the threshold
+    // liquidator takes $75 backing and burns of the $50 DSC
+    /**
+     *
+     * @param collateral the erc20 collateral to liquidate
+     * @param user the user who has broken health factor. it should be below MIN_HEALTH_FACTOR
+     * @param debtToCover the amount of DSC, you want to burn to improve the users health factor
+     * @notice you can partically liquidate the user and you wll get a liquidation bonus
+     * @notice this function assumes the protocol will be roughly 200% overcollateralized in order this to work
+     * @notice a known bug would be if the protocol were 100% or less collateralized then we wouldnt be
+     * able to incentive liquidators. For example, if the price of the collateral plummeted before anyone could be liquidated.
+     * Cehcks, Effects, Interactions
+     */
+    function liquidate(address collateral, address user, uint256 debtToCover) moreThanZero(debtToCover) nonReentrant() external {
+        // need to check the health factor for the user
+        uint256 startingUserHealthFactor = _healthFactor(user);
+        if (startingUserHealthFactor >= MIN_HEALTH_FACTOR){
+            revert DSCEngine_HealthFactorOK();
+        }
+        // we want to burn their DSC 'debt' and take their collateral
+        // Bad user: $140 ETH, $100 DSC
+        // debtToCover = $100
+        uint256 tokenAmountFromDebtCovered = getTokenAmmountFromUSD(collateral, debtToCover);
+        // and give them 10% bonus
+        // so we need to give %110
+        uint256 bonusCollateral = (tokenAmountFromDebtCovered * LIQUIDATION_BONUS/ LIQUIDATION_PRECISION);
+
+        uint256 totalCollateralToRedeed = tokenAmountFromDebtCovered + bonusCollateral;
+
+    }
+
+    // what if the eth price dumped into 40
     // what to do prevent?
     // we can set a threshold like 150%?
     // if you have $50 in the protocol DSC -> then you have to have at least $75 ETH
@@ -295,6 +334,26 @@ contract DSEngine is ReentrancyGuard {
         }
     }
 
+    /**
+     *
+     * @param
+     * @notice the redeemCollateral function above requires message.sender to rededm
+     * in that case how would the liquidators can call? we need to refactor it.
+     */
+
+    function _redeemCollateral (){
+         s_userCollateralDeposit[msg.sender][tokenCollateralAddress] -= amountCollateral;
+        emit CollateralRedeemed(msg.sender, tokenCollateralAddress, amountCollateral);
+        // to make it gas fee efficient  we do the transfer first and then check health factor
+        // if its not okay we will revert anyway.
+        bool success = IERC20(tokenCollateralAddress).transfer(msg.sender, amountCollateral);
+        if(!success){
+            revert DSCEngine_Transferfailed();
+        }
+    // check health factor
+        _revertIfHealthFactorIsBroken(msg.sender);
+    }
+
     /// Public & External view functions
     //////// public external view functions
     /// @notice Explain to an end user what this does
@@ -323,6 +382,15 @@ contract DSEngine is ReentrancyGuard {
         // if 1 ETH = $1000
         // the returned value from CL will be 1000 * 1e8
 
-        return (uint256(price)*ADDITIONAL_FEED_PRECISION * amount)/PRECISION;
+        return (uint256(price)*ADDITIONAL_FEED_PRECISION * amount)/LIQUIDATION_PRECISION;
+    }
+
+    function getTokenAmmountFromUSD(address token, uint256 usdAmountInWei) public view returns(uint256) {
+        // price of eth
+        // $/ETH -> $2000 ETH -> and amount is collateral $1000 => 0.5 eth
+         AggregatorV3Interface priceFeed = AggregatorV3Interface(s_PriceFeeds[token]);
+        (, int256 price,,,) = priceFeed.latestRoundData();
+
+        (usdAmountInWei * LIQUIDATION_PRECISION)/uint256(price) * ADDITIONAL_FEED_PRECISION;
     }
 }
