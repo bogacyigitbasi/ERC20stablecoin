@@ -34,6 +34,7 @@ contract DSEngine is ReentrancyGuard {
     error DSCEngine_Transferfailed();
     error DSEngine_TransferFailed();
     error DSCEngine_HealthFactorOK();
+    error DSCEngine__HealthFactorNotImproved();
     /////////
     /// modifiers
     /////////
@@ -93,6 +94,8 @@ contract DSEngine is ReentrancyGuard {
     event CollateralDeposited(address indexed user, address indexed token, uint256 indexed amount);
 
     event CollateralRedeemed(address indexed user, address indexed token, uint256 indexed amount);
+
+    event CollateralRedeemedFrom(address indexed redeemedFrom, address indexed redeemedTo, address indexed token, uint256 amount);
 
     /////////
     /// Functions
@@ -156,21 +159,28 @@ contract DSEngine is ReentrancyGuard {
         }
     }
 
-    // in order to get the collateral back
+    // // in order to get the collateral back
+    // // health factor must be over 1 after collateral withdrawn
+    // function redeemCollateral(address tokenCollateralAddress, uint256 amountCollateral) public moreThanZero(amountCollateral) nonReentrant{
+    //     s_userCollateralDeposit[msg.sender][tokenCollateralAddress] -= amountCollateral;
+    //     emit CollateralRedeemed(msg.sender, tokenCollateralAddress, amountCollateral);
+    //     // to make it gas fee efficient  we do the transfer first and then check health factor
+    //     // if its not okay we will revert anyway.
+    //     bool success = IERC20(tokenCollateralAddress).transfer(msg.sender, amountCollateral);
+    //     if(!success){
+    //         revert DSCEngine_Transferfailed();
+    //     }
+    // // check health factor
+    //     _revertIfHealthFactorIsBroken(msg.sender);
+    // }
+
+     // in order to get the collateral back
     // health factor must be over 1 after collateral withdrawn
     function redeemCollateral(address tokenCollateralAddress, uint256 amountCollateral) public moreThanZero(amountCollateral) nonReentrant{
-        s_userCollateralDeposit[msg.sender][tokenCollateralAddress] -= amountCollateral;
-        emit CollateralRedeemed(msg.sender, tokenCollateralAddress, amountCollateral);
-        // to make it gas fee efficient  we do the transfer first and then check health factor
-        // if its not okay we will revert anyway.
-        bool success = IERC20(tokenCollateralAddress).transfer(msg.sender, amountCollateral);
-        if(!success){
-            revert DSCEngine_Transferfailed();
-        }
+
+       _redeemCollateral(tokenCollateralAddress, amountCollateral, msg.sender,msg.sender);
     // check health factor
         _revertIfHealthFactorIsBroken(msg.sender);
-
-
     }
 
 // in a real life scenario lets say I had $100 ETH and minted 20 DSC
@@ -212,13 +222,8 @@ contract DSEngine is ReentrancyGuard {
     }
 
     function burnDSC(uint256 amount) public moreThanZero(amount) {
-        s_userDSCMintAmount[msg.sender] -= amount;
-        bool success = dsc.transferFrom(msg.sender, address(this), amount);
-        if(!success){
-            revert DSEngine_TransferFailed();
-        }
 
-        dsc.burn(amount);
+        _burnDSC(amount, msg.sender, msg.sender);
         // when we burn debt the health factor cant get worse but lets check
         _revertIfHealthFactorIsBroken(msg.sender);
     }
@@ -262,9 +267,17 @@ contract DSEngine is ReentrancyGuard {
         // and give them 10% bonus
         // so we need to give %110
         uint256 bonusCollateral = (tokenAmountFromDebtCovered * LIQUIDATION_BONUS/ LIQUIDATION_PRECISION);
+    // liquidated amount + reward
+        uint256 totalCollateralToRedemeed = tokenAmountFromDebtCovered + bonusCollateral;
+        _redeemCollateral(collateral, totalCollateralToRedemeed, user, msg.sender);
 
-        uint256 totalCollateralToRedeed = tokenAmountFromDebtCovered + bonusCollateral;
+        _burnDSC(debtToCover, user, msg.sender);
 
+        uint256 endingUserHealthFactor =_healthFactor(user);
+        if (endingUserHealthFactor <= startingUserHealthFactor){
+            revert DSCEngine__HealthFactorNotImproved();
+        }
+        _revertIfHealthFactorIsBroken(user);
     }
 
     // what if the eth price dumped into 40
@@ -336,17 +349,20 @@ contract DSEngine is ReentrancyGuard {
 
     /**
      *
-     * @param
+     * @param tokenCollateralAddress token address
+     * @param amountCollateral amount
+     * @param from from which
+     * @param to to whom
      * @notice the redeemCollateral function above requires message.sender to rededm
      * in that case how would the liquidators can call? we need to refactor it.
      */
 
-    function _redeemCollateral (){
+    function _redeemCollateral (address tokenCollateralAddress, uint256 amountCollateral, address from, address to) private {
          s_userCollateralDeposit[msg.sender][tokenCollateralAddress] -= amountCollateral;
-        emit CollateralRedeemed(msg.sender, tokenCollateralAddress, amountCollateral);
+        emit CollateralRedeemedFrom(from,to, tokenCollateralAddress, amountCollateral);
         // to make it gas fee efficient  we do the transfer first and then check health factor
         // if its not okay we will revert anyway.
-        bool success = IERC20(tokenCollateralAddress).transfer(msg.sender, amountCollateral);
+        bool success = IERC20(tokenCollateralAddress).transfer(to, amountCollateral);
         if(!success){
             revert DSCEngine_Transferfailed();
         }
@@ -354,6 +370,22 @@ contract DSEngine is ReentrancyGuard {
         _revertIfHealthFactorIsBroken(msg.sender);
     }
 
+
+    /**
+     * @dev low-level internal function dont call unless the function calling its checking
+     * the healthfactor is broken
+     */
+
+    function _burnDSC(uint256 amountDSCToBurn, address onBehalfOf, address dscFrom) private {
+        s_userDSCMintAmount[onBehalfOf] -= amountDSCToBurn;
+        bool success = dsc.transferFrom(dscFrom, address(this), amountDSCToBurn);
+        if(!success){
+            revert DSEngine_TransferFailed();
+        }
+        dsc.burn(amountDSCToBurn);
+        // when we burn debt the health factor cant get worse but lets check
+        _revertIfHealthFactorIsBroken(msg.sender);
+    }
     /// Public & External view functions
     //////// public external view functions
     /// @notice Explain to an end user what this does
