@@ -92,9 +92,7 @@ contract DSEngine is ReentrancyGuard {
     /// Events
     /////////
     event CollateralDeposited(address indexed user, address indexed token, uint256 indexed amount);
-
     event CollateralRedeemed(address indexed user, address indexed token, uint256 indexed amount);
-
     event CollateralRedeemedFrom(address indexed redeemedFrom, address indexed redeemedTo, address indexed token, uint256 amount);
 
     /////////
@@ -263,7 +261,7 @@ contract DSEngine is ReentrancyGuard {
         // we want to burn their DSC 'debt' and take their collateral
         // Bad user: $140 ETH, $100 DSC
         // debtToCover = $100
-        uint256 tokenAmountFromDebtCovered = getTokenAmmountFromUSD(collateral, debtToCover);
+        uint256 tokenAmountFromDebtCovered = getTokenAmountFromUSD(collateral, debtToCover);
         // and give them 10% bonus
         // so we need to give %110
         uint256 bonusCollateral = (tokenAmountFromDebtCovered * LIQUIDATION_BONUS/ LIQUIDATION_PRECISION);
@@ -417,12 +415,16 @@ contract DSEngine is ReentrancyGuard {
         return (uint256(price)*ADDITIONAL_FEED_PRECISION * amount)/LIQUIDATION_PRECISION;
     }
 
-    function getTokenAmmountFromUSD(address token, uint256 usdAmountInWei) public view returns(uint256) {
+    function getTokenAmountFromUSD(address token, uint256 usdAmountInWei) public view returns(uint256) {
         // price of eth
         // $/ETH -> $2000 ETH -> and amount is collateral $1000 => 0.5 eth
          AggregatorV3Interface priceFeed = AggregatorV3Interface(s_PriceFeeds[token]);
         (, int256 price,,,) = priceFeed.latestRoundData();
 
-        (usdAmountInWei * LIQUIDATION_PRECISION)/uint256(price) * ADDITIONAL_FEED_PRECISION;
+        return (usdAmountInWei * LIQUIDATION_PRECISION) * ADDITIONAL_FEED_PRECISION/uint256(price);
+    }
+
+    function getAccountInformation(address user) public view returns (uint256 totalDSCMinted, uint256 collateralUSD) {
+        (totalDSCMinted, collateralUSD) = _getAccountInformation(user);
     }
 }

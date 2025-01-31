@@ -1,6 +1,6 @@
 // npx hardhat test test/testFeeds.js --network localhost
 
-const { expect } = require("chai");
+const { expect, assert } = require("chai");
 const { ethers } = require("hardhat");
 const {dotenv} = require("dotenv").config()
 
@@ -60,10 +60,43 @@ describe ("Test DSC and Engine", function(){
         let transaction = await mockerc20.connect(account1).approve(await dscEngine.getAddress(), BigInt(100000000));
         await transaction.wait();
 
-        // transaction = await dscEngine.connect(account1).depositCollateral(mockAddress,100000000,{gasLimit:300000})
+        transaction = await dscEngine.connect(account1).depositCollateral(mockAddress,100000000,{gasLimit:300000})
+        await transaction.wait();
+        // transaction = await dscEngine.connect(account1).depositCollateral(mockAddress,0,{gasLimit:300000})
         // await transaction.wait();
-        transaction = await dscEngine.connect(account1).depositCollateral(mockAddress,0,{gasLimit:300000})
+
+        // if deposit successful emits an event
+        expect(transaction).to.emit(dscEngine, "CollateralDeposited")
+
+        // get account info
+        console.log(await dscEngine.getAccountInformation(account1))
+
+    })
+
+    it("test tokenAmountUSD", async() =>{
+        let usdAmount = BigInt(35000000000);
+        let expectedWeth = BigInt(10000000);
+        const feed = await dscEngine.getTokenAmountFromUSD(mockAddress, usdAmount);
+        console.log(feed)
+
+        console.log(expectedWeth)
+        // expect(feed).to.equal(expectedWeth)
+    })
+
+    it("test depositCollateral", async() =>{
+        // create unsupported dummy mock erc20 to collateral
+        // create MockERC20
+        const MockERC20 = await hre.ethers.getContractFactory("MockERC20")
+        let mocka = await MockERC20.deploy("DUMM", "LEY", await account1.getAddress(), BigInt(500000000));
+        await mocka.waitForDeployment()
+        const mockaAddress = await mocka.getAddress()
+        // Approve dscEngine to spend the mock token
+        let transaction = await mocka.connect(account1).approve(await dscEngine.getAddress(), BigInt(100000000));
         await transaction.wait();
 
+        // Expect depositCollateral to revert
+        await expect(
+            dscEngine.connect(account1).depositCollateral(mockaAddress, BigInt(100000000))
+        ).to.be.revertedWithCustomError(dscEngine,"DSCEngine__TokenIsNotAllowed2")
     })
 })
